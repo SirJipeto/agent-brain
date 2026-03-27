@@ -99,164 +99,33 @@ respond("Great! Spring is a wonderful time to visit for cherry blossoms.")
 
 ---
 
-## 🔌 Framework Integration
+## 🔌 Integration
 
-Agent Brain is framework-agnostic — it works with any AI agent that processes messages. Below are setup guides for the most popular frameworks.
+Agent Brain is framework-agnostic — it works with any AI agent that processes messages. There are three ways to integrate it, from simplest to most flexible.
 
-### Agent Zero
+### 1. Convenience functions (simplest)
 
-```python
-from agent_brain import observe, get_context
-
-def on_user_message(message: str) -> str:
-    observe(message, role="user")
-    context = get_context()
-    return f"System: {context}\n\nUser: {message}" if context else message
-```
-
----
-
-### OpenClaw
-
-#### 1. Install OpenClaw
-
-```bash
-# macOS / Linux / WSL2 (one-line installer)
-curl -fsSL https://docs.openclaw.ai/install.sh | bash
-
-# Or via npm
-npm install -g openclaw
-```
-
-> **Prerequisites:** Node.js 22+, Git, and an API key from a supported provider (Anthropic, OpenAI, Google, etc.)
-
-#### 2. Install Agent Brain into OpenClaw's environment
-
-```bash
-# From your agent-brain directory:
-pip install -e ".[embeddings]"
-```
-
-#### 3. Set environment variables
-
-```bash
-export NEO4J_URI=bolt://localhost:7687
-export NEO4J_PASSWORD=yourpassword
-```
-
-#### 4. Wire into OpenClaw's tool / hook system
+Drop these into your agent's message loop — no subclassing required:
 
 ```python
-# openclaw_brain_tool.py — register as a custom tool in OpenClaw
-from agent_brain import observe, get_context, recall
+from agent_brain import observe, get_context, respond, recall
 
-def on_user_message(message: str) -> str:
-    """Hook into OpenClaw's message pipeline."""
-    observe(message, role="user")
-    context = get_context()
-    return f"System: {context}\n\nUser: {message}" if context else message
+# On every user message:
+observe("I'm planning a trip to Japan", role="user")
 
-def remember(query: str) -> str:
-    """Expose as an OpenClaw tool so the agent can recall memories on demand."""
-    results = recall(query, limit=5)
-    return "\n".join(r["memory"] for r in results) if results else "No memories found."
+# Before generating your response — grab proactive context:
+context = get_context()          # returns a "**Grounded Context:**" block or ""
+
+# After generating a response, store it:
+respond("Spring is a wonderful time for cherry blossoms.")
+
+# On-demand recall (e.g. as a tool the agent can call):
+results = recall("Japan travel budget", limit=5)
 ```
 
-Register the tool in your OpenClaw config (`.openclaw/config.json` or via the CLI):
+### 2. BrainAgent wrapper
 
-```json
-{
-  "tools": [
-    {
-      "name": "remember",
-      "description": "Search associative memory for relevant past context",
-      "module": "openclaw_brain_tool",
-      "function": "remember"
-    }
-  ]
-}
-```
-
----
-
-### Hermes Agent (Nous Research)
-
-#### 1. Install Hermes Agent
-
-```bash
-# macOS / Linux / WSL2 (one-line installer — installs uv, Python 3.11, Node, ripgrep, ffmpeg)
-curl -fsSL https://hermes.nousresearch.com/install.sh | bash
-
-# Or manually via Git + uv
-git clone https://github.com/NousResearch/hermes-agent.git
-cd hermes-agent
-uv sync
-```
-
-> **Prerequisites:** Git (installer handles the rest). Windows users must use WSL2.
-
-#### 2. Install Agent Brain into Hermes' virtual environment
-
-```bash
-# Activate the Hermes venv first, then:
-pip install -e /path/to/agent-brain[embeddings]
-```
-
-#### 3. Set environment variables
-
-```bash
-export NEO4J_URI=bolt://localhost:7687
-export NEO4J_PASSWORD=yourpassword
-```
-
-#### 4. Wire into Hermes' agent loop
-
-```python
-# hermes_brain_plugin.py — add to Hermes' plugins directory
-from agent_brain import observe, get_context, recall, respond
-
-class BrainPlugin:
-    """Hermes Agent plugin that adds associative memory."""
-
-    name = "agent_brain"
-
-    def on_user_message(self, message: str) -> str:
-        """Called on every user message. Returns context to prepend to prompt."""
-        observe(message, role="user")
-        return get_context()
-
-    def on_agent_response(self, response: str):
-        """Called after the agent generates a response."""
-        respond(response)
-
-    def recall_memory(self, query: str, limit: int = 5) -> str:
-        """Expose as a callable tool for the agent."""
-        results = recall(query, limit=limit)
-        return "\n".join(r["memory"] for r in results) if results else "No memories found."
-```
-
-Register in your Hermes config:
-
-```yaml
-# hermes.yaml
-plugins:
-  - module: hermes_brain_plugin
-    class: BrainPlugin
-```
-
----
-
-### Claude Code / Custom tool
-
-```python
-from agent_brain import recall
-
-def remember(query: str) -> str:
-    results = recall(query, limit=5)
-    return "\n".join(r["memory"] for r in results)
-```
-
-### Full BrainAgent wrapper (any framework)
+Wraps the full lifecycle into a single object you can embed in any agent class:
 
 ```python
 from agent_brain import BrainAgent
@@ -274,9 +143,9 @@ class MyAgent:
         return response
 ```
 
-### Using the ObserverFramework directly
+### 3. ObserverFramework (full control)
 
-The `ObserverFramework` gives you finer control: conversation scoping, hook callbacks, and rich manual recall.
+For conversation scoping, hook callbacks, and rich manual recall:
 
 ```python
 from agent_brain import Neo4jBrain
@@ -302,6 +171,127 @@ result = observer.recall_related("Japan travel budget")
 # }
 
 observer.end_conversation()   # auto-summarises recent exchanges
+```
+
+---
+
+## 🏭 Integrating into an Agent Framework
+
+If you're building or extending an agent framework (like [OpenClaw](https://openclaw.ai)), here's the recommended architecture for wiring Agent Brain into the agent loop. This pattern applies to any framework — OpenClaw is used as a reference example.
+
+### Step 1 — Install Agent Brain as a dependency
+
+```bash
+# Inside your framework's virtual environment:
+pip install git+https://github.com/sirjipeto/agent-brain.git
+# Or for vector search support:
+pip install "agent-brain[embeddings] @ git+https://github.com/sirjipeto/agent-brain.git"
+```
+
+Set Neo4j connection via environment variables (or `.env`):
+
+```bash
+export NEO4J_URI=bolt://localhost:7687
+export NEO4J_PASSWORD=yourpassword
+```
+
+### Step 2 — Hook into the message lifecycle
+
+Every agent framework has a message loop. You need to tap into three points:
+
+```
+ User message ──► [1] OBSERVE ──► Agent LLM ──► [2] INJECT CONTEXT ──► Response ──► [3] STORE
+```
+
+```python
+# brain_middleware.py — drop into your framework's middleware / plugin directory
+from agent_brain import BrainAgent
+
+brain = BrainAgent()
+brain.initialize()
+
+# [1] Called when a user message arrives
+def before_llm(user_message: str) -> str:
+    """Observe the message and return enriched prompt."""
+    brain.observe(user_message, role="user")
+    context = brain.get_context()
+    if context:
+        return f"{context}\n\n{user_message}"
+    return user_message
+
+# [2] Called after the LLM generates a response
+def after_llm(response: str):
+    """Store the agent's response as a memory."""
+    brain.respond(response)
+```
+
+### Step 3 — Expose recall as a tool
+
+Let the agent call `recall` on demand so it can search its own memory:
+
+```python
+from agent_brain import recall
+
+# Register this as a tool your agent can invoke
+def remember(query: str) -> str:
+    """Search the agent's associative memory for relevant context."""
+    results = recall(query, limit=5)
+    if not results:
+        return "No relevant memories found."
+    return "\n".join(f"• {r['memory']}" for r in results)
+```
+
+Register it in your framework's tool config — for example in OpenClaw:
+
+```json
+{
+  "mcpServers": {},
+  "customTools": [
+    {
+      "name": "remember",
+      "description": "Search associative memory for past context relevant to the current task",
+      "module": "brain_middleware",
+      "function": "remember"
+    }
+  ]
+}
+```
+
+### Step 4 — Schedule maintenance
+
+Run consolidation and decay on a timer (background thread, cron job, or framework scheduler):
+
+```python
+from agent_brain import consolidate_memories, decay_connections
+
+# e.g. nightly or every N conversations
+def run_maintenance():
+    consolidate_memories(older_than_days=7)
+    decay_connections(threshold=0.1)
+```
+
+### Architecture summary
+
+```
+┌──────────────────────────────────────────────────────┐
+│                YOUR AGENT FRAMEWORK                   │
+│                                                       │
+│   User msg ──► before_llm() ──► LLM ──► after_llm() │
+│                     │                       │         │
+│                     ▼                       ▼         │
+│              ┌────────────────────────────────┐       │
+│              │         AGENT BRAIN            │       │
+│              │                                │       │
+│              │  observe() → extract entities  │       │
+│              │  get_context() → graph search  │       │
+│              │  respond() → store response    │       │
+│              │  recall() → associative search │       │
+│              │                                │       │
+│              │         Neo4j Graph            │       │
+│              └────────────────────────────────┘       │
+│                                                       │
+│   Tools: [ remember() ]     Scheduler: maintenance()  │
+└──────────────────────────────────────────────────────┘
 ```
 
 ---
