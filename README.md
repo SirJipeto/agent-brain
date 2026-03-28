@@ -62,8 +62,7 @@ Unlike a plain vector store that only finds "similar" chunks, Agent Brain unders
 ```bash
 git clone https://github.com/sirjipeto/agent-brain.git
 cd agent-brain
-pip install -e .                          # core (neo4j driver only)
-pip install -e ".[embeddings]"            # + sentence-transformers for vector search
+pip install -e .
 ```
 
 ### Run Neo4j with Docker (recommended)
@@ -184,8 +183,6 @@ If you're building or extending an agent framework (like [OpenClaw](https://open
 ```bash
 # Inside your framework's virtual environment:
 pip install git+https://github.com/sirjipeto/agent-brain.git
-# Or for vector search support:
-pip install "agent-brain[embeddings] @ git+https://github.com/sirjipeto/agent-brain.git"
 ```
 
 Set Neo4j connection via environment variables (or `.env`):

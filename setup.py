@@ -10,12 +10,8 @@ setup(
     packages=find_packages(),
     install_requires=[
         "neo4j>=5.0",
+        "sentence-transformers>=2.0.0",
     ],
-    extras_require={
-        "embeddings": [
-            "sentence-transformers>=2.0.0",
-        ],
-    },
     python_requires=">=3.10",
     classifiers=[
         "Development Status :: 3 - Alpha",
