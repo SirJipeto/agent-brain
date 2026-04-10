@@ -46,6 +46,8 @@ Unlike a plain vector store that only finds "similar" chunks, Agent Brain unders
 - **Memory consolidation** — groups old episodic memories by topic, condenses them into summary nodes, and archives the originals
 - **Fact extraction** — pulls structured facts (dates, intentions, preferences) from conversation clusters
 - **Relationship decay** — periodically weakens stale connections and prunes those below a minimum threshold
+- **spaCy NER** — auto-classifies entities as people, organizations, places, dates, etc. (not just "concepts")
+- **Pluggable embeddings** — choose between local (sentence-transformers), OpenAI API, or Ollama at install time
 - **Framework agnostic** — works with Agent Zero, LangChain, Claude Code, or any custom agent
 
 ---
@@ -57,15 +59,45 @@ Unlike a plain vector store that only finds "similar" chunks, Agent Brain unders
 - Python 3.10+
 - Neo4j 5.x (local or Aura cloud)
 
-### Install from source
+### Step 1 — Clone and install
 
 ```bash
 git clone https://github.com/sirjipeto/agent-brain.git
 cd agent-brain
-pip install -e .
 ```
 
-### Run Neo4j with Docker (recommended)
+### Step 2 — Choose your embedding provider
+
+Agent Brain uses vector embeddings to power semantic search. You choose which embedding backend to use at install time:
+
+| Install command | Provider | Runs where | Download size | Best for |
+|----------------|----------|------------|---------------|----------|
+| `pip install -e ".[local]"` | sentence-transformers | Your machine (CPU/GPU) | **~2 GB+** (includes PyTorch) | Privacy, offline use, no API costs |
+| `pip install -e ".[openai]"` | OpenAI API | Cloud | ~1 MB | Best quality, lowest setup effort |
+| `pip install -e ".[ollama]"` | Ollama | Your machine (via API) | ~1 MB (+ model pull) | Privacy + easy model management |
+
+> ⚠️ **Note:** The `[local]` option downloads PyTorch and model weights (~2 GB+). If you're on a machine without a GPU or want faster setup, consider `[openai]` or `[ollama]`.
+
+```bash
+# Example: install with OpenAI embeddings
+pip install -e ".[openai]"
+
+# Example: install with local sentence-transformers
+pip install -e ".[local]"
+
+# Example: install all providers
+pip install -e ".[all-embeddings]"
+```
+
+### Step 3 — Download the spaCy language model
+
+Agent Brain uses spaCy for named entity recognition (extracting people, places, organizations, etc.):
+
+```bash
+python -m spacy download en_core_web_sm
+```
+
+### Step 4 — Run Neo4j with Docker (recommended)
 
 ```bash
 docker run --name neo4j \
@@ -73,6 +105,45 @@ docker run --name neo4j \
   -e NEO4J_AUTH=neo4j/yourpassword \
   neo4j:5
 ```
+
+### Step 5 — Configure your embedding provider
+
+Set your provider via environment variables (or pass it in code):
+
+```bash
+# For sentence-transformers (default — no extra config needed)
+export AGENT_BRAIN_EMBEDDING_PROVIDER=sentence-transformers
+
+# For OpenAI
+export AGENT_BRAIN_EMBEDDING_PROVIDER=openai
+export OPENAI_API_KEY=sk-your-key-here
+# Optional: export AGENT_BRAIN_EMBEDDING_MODEL=text-embedding-3-small
+
+# For Ollama (requires Ollama running locally)
+export AGENT_BRAIN_EMBEDDING_PROVIDER=ollama
+# Optional: export OLLAMA_BASE_URL=http://localhost:11434
+# Pull the model first: ollama pull nomic-embed-text
+```
+
+Or configure in code:
+
+```python
+from agent_brain import Neo4jBrain, create_provider
+
+# OpenAI
+provider = create_provider("openai", api_key="sk-...")
+brain = Neo4jBrain(embedder=provider)
+
+# Ollama
+provider = create_provider("ollama", model="nomic-embed-text")
+brain = Neo4jBrain(embedder=provider)
+
+# Local sentence-transformers
+provider = create_provider("local", model="all-MiniLM-L6-v2")
+brain = Neo4jBrain(embedder=provider)
+```
+
+> **No fallback.** If your chosen provider fails (missing dependency, bad API key, Ollama not running), Agent Brain will raise a clear error with install instructions — it will never silently fall back to a different model.
 
 ---
 
@@ -94,6 +165,25 @@ if context:
 
 # 3. After you generate a response, store it:
 respond("Great! Spring is a wonderful time to visit for cherry blossoms.")
+```
+
+---
+
+## 🚀 Integration Examples & Production Scaling
+
+`agent-brain` is designed to be highly interoperable with popular agent frameworks and production architectures.
+
+**Integration Guides:**
+Check out the [`examples/`](./examples) directory for plug-and-play integrations:
+- `fastapi_service.py`: Exposing agent-brain as a REST API with global connection pooling and health checks.
+- `langchain_tool.py`: Wrapping hybrid search into a LangChain `BaseTool` for autonomous React agents.
+- `claude_integration.py`: Direct Claude API integration showcasing how to explicitly map graph constraints into LLM context prompts.
+
+**Production Deployment:**
+If your graph spans millions of nodes, you should review [`SCALING.md`](./SCALING.md). `agent-brain` provides zero-overhead telemetry via `opentelemetry-api`. To query the health of your graph (useful for Kubernetes Liveness Probes), you can always call:
+```python
+health_stats = brain.get_health()
+# {"status": "up", "metrics": {"total_memories": 1500, "total_entities": 400}}
 ```
 
 ---
@@ -181,15 +271,21 @@ If you're building or extending an agent framework (like [OpenClaw](https://open
 ### Step 1 — Install Agent Brain as a dependency
 
 ```bash
-# Inside your framework's virtual environment:
-pip install git+https://github.com/sirjipeto/agent-brain.git
+# Inside your framework's virtual environment (pick your embedding backend):
+pip install "agent-brain[openai] @ git+https://github.com/sirjipeto/agent-brain.git"
+# or: pip install "agent-brain[local] @ git+https://github.com/sirjipeto/agent-brain.git"
+
+# Download the spaCy NER model
+python -m spacy download en_core_web_sm
 ```
 
-Set Neo4j connection via environment variables (or `.env`):
+Set connection and embedding variables (or `.env`):
 
 ```bash
 export NEO4J_URI=bolt://localhost:7687
 export NEO4J_PASSWORD=yourpassword
+export AGENT_BRAIN_EMBEDDING_PROVIDER=openai
+export OPENAI_API_KEY=sk-your-key-here
 ```
 
 ### Step 2 — Hook into the message lifecycle
@@ -306,6 +402,18 @@ def run_maintenance():
 | `search` | `(query) → List[Dict]` | Keyword/full-text search over stored memories |
 | `get_stats` | `() → Dict` | Graph statistics: memory count, entity count, relationship count |
 
+### Embedding providers (`from agent_brain import ...`)
+
+| Class / Function | Description |
+|-----------------|-------------|
+| `create_provider(name, **kwargs)` | Factory: create a provider by name ("local", "openai", "ollama") |
+| `create_provider_from_env()` | Create a provider from `AGENT_BRAIN_EMBEDDING_*` env vars |
+| `list_providers()` | List available providers with install commands |
+| `SentenceTransformerProvider` | Local embeddings (384d default, `all-MiniLM-L6-v2`) |
+| `OpenAIProvider` | OpenAI API embeddings (1536d default, `text-embedding-3-small`) |
+| `OllamaProvider` | Ollama local API embeddings (768d default, `nomic-embed-text`) |
+| `CallableProvider` | Wrap any `fn(text) → List[float]` as a provider (testing/custom) |
+
 ### Memory maintenance
 
 | Function | Signature | Description |
@@ -384,17 +492,29 @@ def run_maintenance():
 
 ## 🔒 Environment Variables
 
+### Neo4j Connection
+
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `NEO4J_URI` | `bolt://localhost:7687` | Neo4j Bolt connection URI |
 | `NEO4J_USER` | `neo4j` | Neo4j username |
 | `NEO4J_PASSWORD` | `password` | Neo4j password |
 
-Override them before importing the library:
+### Embedding Provider
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `AGENT_BRAIN_EMBEDDING_PROVIDER` | `sentence-transformers` | Provider name: `sentence-transformers`, `openai`, or `ollama` |
+| `AGENT_BRAIN_EMBEDDING_MODEL` | *(provider default)* | Model name (e.g. `all-MiniLM-L6-v2`, `text-embedding-3-small`, `nomic-embed-text`) |
+| `OPENAI_API_KEY` | — | Required for the `openai` provider |
+| `OPENAI_BASE_URL` | — | Custom OpenAI-compatible API endpoint |
+| `OLLAMA_BASE_URL` | `http://localhost:11434` | Ollama server URL |
 
 ```bash
 export NEO4J_URI=bolt://localhost:7687
 export NEO4J_PASSWORD=mysecretpassword
+export AGENT_BRAIN_EMBEDDING_PROVIDER=openai
+export OPENAI_API_KEY=sk-your-key-here
 ```
 
 ---

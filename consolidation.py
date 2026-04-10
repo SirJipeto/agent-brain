@@ -88,6 +88,7 @@ class MemoryConsolidator:
     def consolidate_old_memories(self, 
                                 older_than_days: int = 7,
                                 min_cluster_size: int = 2,
+                                importance_threshold: float = 0.8,
                                 dry_run: bool = False) -> ConsolidationResult:
         """
         Main consolidation entry point.
@@ -95,6 +96,7 @@ class MemoryConsolidator:
         Args:
             older_than_days: Consolidate memories older than this
             min_cluster_size: Minimum memories to form a cluster
+            importance_threshold: Memories >= this importance are skipped
             dry_run: If True, only report what would be done
 
         Returns:
@@ -110,7 +112,7 @@ class MemoryConsolidator:
         )
 
         # 1. Find old memories
-        old_memories = self._find_old_memories(older_than_days)
+        old_memories = self._find_old_memories(older_than_days, importance_threshold)
         result.memories_processed = len(old_memories)
 
         if not old_memories:
@@ -160,20 +162,25 @@ class MemoryConsolidator:
         logger.info(f"Consolidation complete: {result}")
         return result
 
-    def _find_old_memories(self, older_than_days: int) -> List[Dict]:
+    def _find_old_memories(self, older_than_days: int, importance_threshold: float = 0.8) -> List[Dict]:
         """Find memories older than threshold"""
         query = """
         MATCH (m:Memory)
         WHERE m.archived = false
           AND m.created_at < datetime() - duration({days: $days})
           AND m.content_type IN ["conversation", "note"]
+          AND coalesce(m.importance, 0.5) < $importance_threshold
         RETURN m.id as id, m.content as content, 
                m.container as container, m.source as source,
-               m.created_at as created_at
+               m.created_at as created_at,
+               m.metadata as metadata
         ORDER BY m.created_at ASC
         """
 
-        results = self.brain.conn.execute_query(query, {'days': older_than_days})
+        results = self.brain.conn.execute_query(query, {
+            'days': older_than_days,
+            'importance_threshold': importance_threshold
+        })
         return [dict(r) for r in results]
 
     def _cluster_by_topic(self, memories: List[Dict]) -> Dict[str, List[Dict]]:
@@ -198,16 +205,30 @@ class MemoryConsolidator:
                 container_clusters[container] = []
             container_clusters[container].append(m)
 
-        # Also group by shared entities
+        # Also group by shared entities and temporal bucketing (week)
         for m in memories:
             entities = memory_entities.get(m['id'], [])
+            created = m.get('created_at')
+            
+            # Extract year-week bucket (e.g. 2024-W15)
+            week_bucket = "unknown"
+            if created:
+                try:
+                    native_dt = getattr(created, 'to_native', lambda: created)()
+                    if hasattr(native_dt, 'isocalendar'):
+                        iso = native_dt.isocalendar()
+                        week_bucket = f"{iso[0]}-W{iso[1]:02d}"
+                except Exception:
+                    pass
+
             for entity in entities[:2]:  # Use top 2 entities as key
                 if entity:
-                    if entity not in clusters:
-                        clusters[entity] = []
+                    key = f"topic:{entity}|week:{week_bucket}"
+                    if key not in clusters:
+                        clusters[key] = []
                     # Compare by ID to avoid dict identity issues
-                    if m['id'] not in {x['id'] for x in clusters[entity]}:
-                        clusters[entity].append(m)
+                    if m['id'] not in {x['id'] for x in clusters[key]}:
+                        clusters[key].append(m)
 
         # Merge container clusters if they're small
         for container, cluster_memories in container_clusters.items():
@@ -271,6 +292,27 @@ class MemoryConsolidator:
         # Use first memory as template
         first = originals[0]
 
+        # Calculate consolidation count
+        max_prev_count = 0
+        for m in originals:
+            meta = m.get('metadata', {})
+            if isinstance(meta, str):
+                try:
+                    meta = json.loads(meta)
+                except Exception:
+                    meta = {}
+            if meta and isinstance(meta, dict):
+                max_prev_count = max(max_prev_count, meta.get('consolidation_count', 0))
+        
+        consolidation_count = max_prev_count + 1
+
+        # Generate embedding
+        embedding = None
+        try:
+            embedding = self.brain._embed(summary)
+        except Exception as e:
+            logger.warning(f"Failed to generate embedding for summary: {e}")
+
         query = """
         CREATE (m:Memory {
             id: $id,
@@ -286,6 +328,24 @@ class MemoryConsolidator:
             archived: false,
             created_at: datetime()
         })
+        WITH m
+        CALL {
+            WITH m
+            MATCH (orig:Memory)-[:MENTIONS]->(e:Entity)
+            WHERE orig.id IN $original_ids
+            WITH m, e, count(orig) as mention_count
+            MERGE (m)-[r:MENTIONS]->(e)
+            ON CREATE SET r.weight = coalesce(r.weight, 0.3) + (0.1 * mention_count), r.confidence = 0.8
+            ON MATCH SET r.weight = coalesce(r.weight, 0.3) + (0.1 * mention_count)
+            RETURN count(e) as copied
+        }
+        WITH m
+        CALL {
+            WITH m 
+            WITH m WHERE $embedding IS NOT NULL AND size($embedding) > 0
+            SET m.embedding = $embedding
+            RETURN count(m) as emb_set
+        }
         RETURN m.id as id
         """
 
@@ -294,10 +354,13 @@ class MemoryConsolidator:
             'content': summary,
             'summary': summary[:200],
             'container': first.get('container', 'default'),
+            'original_ids': original_ids,
+            'embedding': embedding if embedding else [],
             'metadata': json.dumps({
                 'original_count': len(originals),
                 'original_ids': original_ids,
-                'topic': topic
+                'topic': topic,
+                'consolidation_count': consolidation_count
             })
         })
 

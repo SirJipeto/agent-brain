@@ -1,0 +1,18 @@
+services:
+  neo4j-test:
+    image: neo4j:5-community
+    container_name: agent-brain-test-neo4j
+    environment:
+      - NEO4J_AUTH=neo4j/testpassword
+      - NEO4J_PLUGINS=["apoc"]
+      - NEO4J_dbms_security_procedures_unrestricted=apoc.*
+    ports:
+      - "7688:7687"   # Use non-default port to avoid conflicts with dev instance
+      - "7475:7474"
+    healthcheck:
+      test: ["CMD", "cypher-shell", "-u", "neo4j", "-p", "testpassword", "RETURN 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    tmpfs:
+      - /data   # In-memory for speed — data is disposable

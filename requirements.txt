@@ -1,2 +1,8 @@
+# Core dependencies
 neo4j>=5.0
-sentence-transformers>=2.0.0
+spacy>=3.5.0
+
+# Embedding providers (choose one during setup):
+#   pip install agent-brain[local]     → sentence-transformers (local, default)
+#   pip install agent-brain[openai]    → OpenAI API
+#   pip install agent-brain[ollama]    → Ollama (local API, requires httpx)

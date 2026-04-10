@@ -7,3 +7,8 @@ dist/
 build/
 .env
 *.db
+.pytest_cache/
+test_results.txt
+implementation_plan.md
+.coverage
+htmlcov/

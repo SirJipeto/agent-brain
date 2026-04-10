@@ -190,48 +190,35 @@ Return valid JSON matching this schema:
 
     def _simple_extract(self, text: str) -> ExtractionResult:
         """
-        Simple rule-based extraction without LLM.
-        Used for testing or when LLM is unavailable.
+        Extraction without LLM — uses spaCy NER when available, regex fallback.
+        Also extracts intentions, topics, and generates a summary.
         """
-        entities = []
-        facts = []
+        from .nlp import extract_entities_spacy
 
-        # Extract capitalized phrases
-        capitalized = re.findall(r'\b[A-Z][a-z]+(?:\s+[A-Z]?[a-z]+)*\b', text)
-        seen = set()
-        for word in capitalized:
-            if word.lower() not in seen and len(word) > 2:
-                seen.add(word.lower())
-                entities.append(ExtractedEntity(
-                    name=word,
-                    entity_type='concept',
-                    confidence=0.5
-                ))
+        # Extract entities via spaCy (or regex fallback)
+        raw_entities = extract_entities_spacy(text, max_entities=10)
+        entities = [
+            ExtractedEntity(
+                name=e["name"],
+                entity_type=e.get("type", "concept"),
+                description=e.get("description", ""),
+                confidence=e.get("confidence", 0.5),
+            )
+            for e in raw_entities
+        ]
 
-        # Extract quoted strings
-        quotes = re.findall(r'"([^"]+)"', text)
-        for quote in quotes[:3]:
-            if quote.lower() not in seen and len(quote) > 3:
-                seen.add(quote.lower())
-                entities.append(ExtractedEntity(
-                    name=quote,
-                    entity_type='concept',
-                    description='Quoted phrase',
-                    confidence=0.4
-                ))
-
-        # Extract intentions
+        # Extract intentions (unchanged)
         intents = []
         want_patterns = [r'want to (.+)', r'need to (.+)', r'going to (.+)']
         for pattern in want_patterns:
             matches = re.findall(pattern, text, re.I)
             intents.extend([f"plans to {m}" for m in matches[:2]])
 
-        # Simple summary
+        # Simple summary (unchanged)
         words = text.split()[:30]
         summary = ' '.join(words) + ('...' if len(text.split()) > 30 else '')
 
-        # Topics (most common words excluding stopwords)
+        # Topics — most common words excluding stopwords (unchanged)
         stopwords = {'the', 'a', 'an', 'is', 'are', 'was', 'were', 'to', 'of', 'in', 'for', 'on', 'and', 'or', 'but', 'i', 'you', 'we', 'they', 'my', 'your', 'this', 'that', 'it'}
         word_freq = {}
         for word in text.lower().split():
@@ -240,8 +227,8 @@ Return valid JSON matching this schema:
         topics = sorted(word_freq.keys(), key=word_freq.get, reverse=True)[:5]
 
         return ExtractionResult(
-            entities=entities[:10],
-            facts=facts,
+            entities=entities,
+            facts=[],
             summary=summary,
             topics=topics,
             intents=intents
