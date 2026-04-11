@@ -7,7 +7,8 @@ setup(
     author="SirJipeto",
     author_email="",
     url="https://github.com/SirJipeto/agent-brain",
-    packages=find_packages(),
+    packages=find_packages(where="src"),
+    package_dir={"": "src"},
     install_requires=[
         "neo4j>=5.0",
         "spacy>=3.5.0",
