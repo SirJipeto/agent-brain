@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.1] - 2026-04-11
+
+### Fixed
+- Fixed bug where `agent_brain.__version__` misaligned with `setup.py`.
+- **Thread Safety:** Made `BrainAgent` explicitly thread-safe using `threading.Lock`.
+- **Driver Leakage:** Patched `BrainAgent` initialization to natively wrap the shared `get_connection()` pool instead of spinning headless connection drivers.
+- **Dead Code Cleanup:** Removed duplicate decay methodologies and unused structure nodes from core classes.
+
 ## [0.2.0] - 2026-04-10
 
 ### Added

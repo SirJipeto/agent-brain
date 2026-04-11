@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="agent-brain",
-    version="0.2.0",
+    version="0.2.1",
     description="Associative memory system for AI agents with Neo4j GraphRAG",
     author="SirJipeto",
     author_email="",
