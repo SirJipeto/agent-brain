@@ -16,60 +16,6 @@ from .metrics import trace_and_measure
 logger = logging.getLogger(__name__)
 
 
-@dataclass
-class MemoryNode:
-    """Represents a memory node in the graph"""
-    id: str = field(default_factory=lambda: str(uuid.uuid4()))
-    content: str = ""
-    summary: str = ""
-    content_type: str = "conversation"
-    embedding: Optional[List[float]] = None
-    importance: float = 0.5
-    salience_tags: List[str] = field(default_factory=list)
-    container: str = "default"
-    timestamp: datetime = field(default_factory=datetime.now)
-    source: str = ""
-    metadata: Dict = field(default_factory=dict)
-
-    def to_dict(self) -> Dict:
-        return {
-            'id': self.id,
-            'content': self.content,
-            'summary': self.summary,
-            'content_type': self.content_type,
-            'embedding': self.embedding,
-            'importance': self.importance,
-            'salience_tags': self.salience_tags,
-            'container': self.container,
-            'timestamp': str(self.timestamp),
-            'source': self.source,
-            'metadata': self.metadata
-        }
-
-
-@dataclass  
-class EntityNode:
-    """Represents an entity node in the graph"""
-    id: str = field(default_factory=lambda: str(uuid.uuid4()))
-    name: str = ""
-    entity_type: str = "concept"  # person, place, object, organization, concept, event, technology
-    description: str = ""
-    embedding: Optional[List[float]] = None
-    importance: float = 0.5
-    tags: List[str] = field(default_factory=list)
-
-    def to_dict(self) -> Dict:
-        return {
-            'id': self.id,
-            'name': self.name,
-            'type': self.entity_type,
-            'description': self.description,
-            'embedding': self.embedding,
-            'importance': self.importance,
-            'tags': self.tags
-        }
-
-
 class Neo4jBrain:
     """
     Main brain class implementing GraphRAG for associative memory.
@@ -172,10 +118,6 @@ class Neo4jBrain:
             except Exception:
                 stats = {}
         
-        # Format the numbers nicely if they exist
-        if stats:
-            stats = {k: v for k, v in stats.items()}
-            
         return {
             "status": "up" if is_connected else "down",
             "metrics": stats or {}
@@ -768,24 +710,6 @@ class Neo4jBrain:
     # ============================================
     # MAINTENANCE
     # ============================================
-
-    def decay_weak_connections(self, threshold: float = 0.1):
-        """Decay and prune weak relationships"""
-        # Decay all weights (directed to avoid processing each rel twice)
-        decay_query = """
-        MATCH ()-[r]->()
-        WHERE r.weight IS NOT NULL
-        SET r.weight = r.weight * 0.95
-        """
-        self.conn.execute_write(decay_query)
-
-        # Remove very weak
-        prune_query = """
-        MATCH ()-[r]->()
-        WHERE r.weight IS NOT NULL AND r.weight < $threshold
-        DELETE r
-        """
-        self.conn.execute_write(prune_query, {'threshold': threshold})
 
     def archive_old_memories(self, older_than_days: int = 30):
         """Archive old memories, keeping entity links."""

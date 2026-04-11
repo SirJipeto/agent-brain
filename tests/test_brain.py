@@ -13,49 +13,9 @@ Covers:
 import pytest
 from datetime import datetime
 
-from agent_brain.brain import Neo4jBrain, MemoryNode, EntityNode
+from agent_brain.brain import Neo4jBrain
 from tests.conftest import FakeNeo4jConnection, mock_embedder
 
-
-# ============================================================================
-# DATACLASSES
-# ============================================================================
-
-class TestMemoryNode:
-    def test_defaults(self):
-        node = MemoryNode()
-        assert node.id is not None
-        assert node.content == ""
-        assert node.importance == 0.5
-        assert node.content_type == "conversation"
-        assert isinstance(node.salience_tags, list)
-        assert isinstance(node.metadata, dict)
-
-    def test_to_dict(self):
-        node = MemoryNode(content="test", importance=0.8)
-        d = node.to_dict()
-        assert d['content'] == "test"
-        assert d['importance'] == 0.8
-        assert 'id' in d
-        assert 'timestamp' in d
-
-    def test_unique_ids(self):
-        a = MemoryNode()
-        b = MemoryNode()
-        assert a.id != b.id
-
-
-class TestEntityNode:
-    def test_defaults(self):
-        node = EntityNode()
-        assert node.entity_type == "concept"
-        assert node.importance == 0.5
-
-    def test_to_dict(self):
-        node = EntityNode(name="Python", entity_type="technology")
-        d = node.to_dict()
-        assert d['name'] == "Python"
-        assert d['type'] == "technology"
 
 
 # ============================================================================
@@ -346,14 +306,7 @@ class TestStrengthenRelationship:
 # MAINTENANCE
 # ============================================================================
 
-class TestDecayWeakConnections:
-    def test_runs_without_error(self, brain_with_data):
-        brain_with_data.decay_weak_connections()
 
-    def test_removes_below_threshold(self, brain_with_data, fake_conn):
-        # Add a very weak relationship
-        fake_conn.add_relationship("e1", "e2", "WEAK", {"weight": 0.05})
-        brain_with_data.decay_weak_connections(threshold=0.1)
 
 
 class TestArchiveOldMemories:

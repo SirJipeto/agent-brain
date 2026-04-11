@@ -15,19 +15,23 @@ Usage:
     respond("assistant response here")
 """
 
-import os
 import uuid
+import logging
+import threading
 from datetime import datetime
 from typing import Optional, Dict, List
 
 from .brain import Neo4jBrain
-from .connection import Neo4jConnection
+from .connection import Neo4jConnection, get_connection
+
+logger = logging.getLogger(__name__)
 
 
 class BrainAgent:
     """Simple brain agent for Agent Zero integration."""
 
     _instance = None
+    _instance_lock = threading.Lock()
 
     def __init__(self):
         self.brain: Optional[Neo4jBrain] = None
@@ -38,27 +42,31 @@ class BrainAgent:
     @classmethod
     def get_instance(cls):
         if cls._instance is None:
-            cls._instance = cls()
+            with cls._instance_lock:
+                if cls._instance is None:
+                    cls._instance = cls()
         return cls._instance
 
     def initialize(self) -> bool:
         if self._initialized:
             return True
         try:
-            from .connection import create_driver
-
-            driver = create_driver()
-            driver.verify_connectivity()
+            conn = get_connection()
+            conn.verify_connectivity()
 
             # Setup central Neo4jBrain instance with shared connection
-            conn = Neo4jConnection(driver)
             self.brain = Neo4jBrain(connection=conn)
 
             self._initialized = True
             return True
         except Exception as e:
-            print(f"Brain init failed: {e}")
+            logger.error(f"Brain init failed: {e}")
             return False
+
+    def shutdown(self):
+        if self.brain and self.brain.conn:
+            self.brain.conn.close()
+        self._initialized = False
 
     def observe(self, message: str, role: str = "user") -> Optional[str]:
         if not self._initialized:
@@ -79,7 +87,7 @@ class BrainAgent:
                     source='agent_zero'
                 )
             except Exception as e:
-                print(f"Store memory failed: {e}")
+                logger.error(f"Store memory failed: {e}")
 
         self._update_grounded_context()
         return memory_id
@@ -98,7 +106,7 @@ class BrainAgent:
                 source='agent_zero_response'
             )
         except Exception as e:
-            print(f"Store response failed: {e}")
+            logger.error(f"Store response failed: {e}")
             return None
 
     def _update_grounded_context(self):
@@ -130,7 +138,7 @@ class BrainAgent:
                             'strength': mem.get('importance', 0.5)
                         })
             except Exception as e:
-                print(f"Grounded context lookup failed for {entity}: {e}")
+                logger.error(f"Grounded context lookup failed for {entity}: {e}")
 
         if proactive:
             proactive.sort(key=lambda x: x['strength'], reverse=True)
@@ -164,7 +172,7 @@ class BrainAgent:
                         'importance': mem.get('importance', 0.5)
                     })
         except Exception as e:
-            print(f"Recall failed: {e}")
+            logger.error(f"Recall failed: {e}")
 
         # Remove duplicates
         unique: List[Dict] = []
@@ -191,7 +199,7 @@ class BrainAgent:
                 for r in semantic_results
             ]
         except Exception as e:
-            print(f"Search failed: {e}")
+            logger.error(f"Search failed: {e}")
             return []
 
     def get_stats(self) -> Dict:
