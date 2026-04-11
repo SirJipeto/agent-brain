@@ -5,7 +5,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.10+](https://img.shields.io/badge/Python-3.10+-blue.svg)](https://www.python.org/)
 [![Neo4j 5.x](https://img.shields.io/badge/Neo4j-5.x-008CC1.svg)](https://neo4j.com/)
-[![Version](https://img.shields.io/badge/version-0.1.0-green.svg)]()
+[![Version](https://img.shields.io/badge/version-0.2.0-green.svg)]()
 
 ---
 
