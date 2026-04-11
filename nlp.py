@@ -100,11 +100,18 @@ def _check_spacy_available() -> bool:
         spacy.load("en_core_web_sm")
         _spacy_available = True
     except (ImportError, OSError):
-        _spacy_available = False
-        logger.info(
-            "spaCy or en_core_web_sm not available. "
-            "Install with: pip install spacy && python -m spacy download en_core_web_sm"
-        )
+        try:
+            import spacy
+            import subprocess
+            logger.info("Attempting to auto-download spaCy en_core_web_sm model...")
+            subprocess.run(["python", "-m", "spacy", "download", "en_core_web_sm"], check=True)
+            _spacy_available = True
+        except Exception as e:
+            _spacy_available = False
+            logger.info(
+                f"spaCy or en_core_web_sm not available. Auto-download failed: {e}. "
+                "Install manually with: pip install spacy && python -m spacy download en_core_web_sm"
+            )
     return _spacy_available
 
 
