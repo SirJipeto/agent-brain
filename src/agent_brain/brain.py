@@ -7,7 +7,7 @@ import uuid
 import json
 from datetime import datetime
 from typing import List, Dict, Optional, Any
-from dataclasses import dataclass, field
+
 import logging
 
 from .connection import get_connection, Neo4jConnection
