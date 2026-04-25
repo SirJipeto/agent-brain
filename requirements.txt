@@ -1,6 +1,6 @@
 # Core dependencies
 neo4j>=5.0
-spacy>=3.5.0
+spacy>=3.8.14
 
 # Embedding providers (choose one during setup):
 #   pip install agent-brain[local]     → sentence-transformers (local, default)
