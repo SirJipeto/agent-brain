@@ -1,5 +1,5 @@
 # Test dependencies
-pytest>=7.0
+pytest>=9.0.3
 pytest-mock>=3.10
 pytest-docker>=2.0
 
