@@ -1,7 +1,7 @@
 # Test dependencies
 pytest>=7.0
 pytest-mock>=3.10
-pytest-docker>=2.0
+pytest-docker>=3.2.5
 
 # Linting (optional)
 ruff>=0.1.0
